@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart City Eco-Control — Алматы</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#060a12;
+  --s1:#0c1220;
+  --s2:#101828;
+  --s3:#162035;
+  --border:rgba(0,255,180,.1);
+  --border2:rgba(0,255,180,.2);
+  --a1:#00ffb4;
+  --a2:#00d4ff;
+  --a3:#ff6b35;
+  --tx:#e8f4f0;
+  --mu:#5a8070;
+  --good:#00e676;
+  --mod:#ffeb3b;
+  --bad:#ff7043;
+  --danger:#f44336;
+  --critical:#9c27b0;
+  --grid:rgba(0,255,180,.04);
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-family:'IBM Plex Sans',sans-serif}
+
+/* GRID BG */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size:40px 40px;
+  pointer-events:none;z-index:0;
+}
+
+#app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+
+/* TOP BAR */
+#top{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;height:52px;
+  background:rgba(6,10,18,.95);
+  border-bottom:1px solid var(--border2);
+  flex-shrink:0;z-index:1000;
+}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-badge{
+  font-family:'Space Mono',monospace;
+  font-size:11px;font-weight:700;letter-spacing:.12em;
+  background:linear-gradient(135deg,var(--a1),var(--a2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.logo-sub{font-size:9px;color:var(--mu);letter-spacing:.08em;text-transform:uppercase;font-family:'Space Mono',monospace}
+.logo-divider{width:1px;height:28px;background:var(--border2)}
+
+.top-metrics{display:flex;align-items:center;gap:2px}
+.metric-chip{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 14px;border-radius:0;
+  border-right:1px solid var(--border);
+  cursor:pointer;transition:.15s;
+}
+.metric-chip:first-child{border-left:1px solid var(--border)}
+.metric-chip:hover{background:rgba(0,255,180,.04)}
+.metric-val{font-family:'Space Mono',monospace;font-size:16px;font-weight:700}
+.metric-lbl{font-size:9px;color:var(--mu);text-transform:uppercase;letter-spacing:.06em;line-height:1.3}
+.pulse{width:6px;height:6px;border-radius:50%;position:relative}
+.pulse::after{content:'';position:absolute;inset:-3px;border-radius:50%;animation:pulse-ring 2s infinite}
+@keyframes pulse-ring{0%{box-shadow:0 0 0 0 currentColor;opacity:.8}100%{box-shadow:0 0 0 8px transparent;opacity:0}}
+
+.top-r{display:flex;align-items:center;gap:12px}
+.live-badge{
+  display:flex;align-items:center;gap:6px;
+  font-family:'Space Mono',monospace;font-size:10px;
+  color:var(--good);letter-spacing:.1em;
+}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--good);animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+.refresh-btn{
+  background:none;border:1px solid var(--border2);border-radius:4px;
+  color:var(--mu);font-size:10px;padding:4px 10px;cursor:pointer;
+  font-family:'Space Mono',monospace;letter-spacing:.06em;transition:.2s;
+}
+.refresh-btn:hover{border-color:var(--a1);color:var(--a1)}
+
+/* MAIN LAYOUT */
+#main{display:flex;flex:1;overflow:hidden}
+
+/* MAP */
+#map-wrap{flex:1;position:relative}
+#map{width:100%;height:100%}
+
+/* OVERLAY PANELS ON MAP */
+.map-panel{
+  position:absolute;z-index:900;
+  background:rgba(6,10,18,.92);
+  border:1px solid var(--border2);
+  backdrop-filter:blur(12px);
+}
+
+.legend{top:12px;left:12px;border-radius:6px;padding:10px 14px;min-width:140px}
+.leg-title{font-family:'Space Mono',monospace;font-size:8px;color:var(--mu);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
+.leg-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.leg-bar{width:3px;height:14px;border-radius:2px;flex-shrink:0}
+.leg-info{font-size:10px;color:var(--tx)}
+.leg-range{font-family:'Space Mono',monospace;font-size:9px;color:var(--mu)}
+
+/* STATION LIST */
+#st-panel{
+  top:12px;right:12px;border-radius:6px;
+  padding:10px 12px;width:220px;
+  max-height:calc(100vh - 80px);overflow-y:auto;
+}
+#st-panel::-webkit-scrollbar{width:2px}
+#st-panel::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.st-head{
+  font-family:'Space Mono',monospace;font-size:8px;
+  color:var(--mu);letter-spacing:.1em;text-transform:uppercase;
+  display:flex;justify-content:space-between;margin-bottom:8px;
+  padding-bottom:6px;border-bottom:1px solid var(--border);
+}
+.st-count{color:var(--a1)}
+.st-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:5px 6px;border-radius:4px;cursor:pointer;
+  margin-bottom:2px;transition:.15s;gap:6px;
+  border:1px solid transparent;
+}
+.st-row:hover{background:rgba(0,255,180,.05);border-color:var(--border)}
+.st-row.anomaly{border-color:rgba(255,107,53,.3);background:rgba(255,107,53,.05)}
+.st-name{font-size:10.5px;color:var(--tx);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-dist{font-size:8.5px;color:var(--mu)}
+.st-aqi{
+  font-family:'Space Mono',monospace;font-size:11px;font-weight:700;
+  padding:2px 7px;border-radius:3px;white-space:nowrap;flex-shrink:0;
+}
+.anomaly-flag{font-size:8px;color:var(--a3)}
+
+/* AI COMMAND CENTER — SIDEBAR */
+#sidebar{
+  width:400px;flex-shrink:0;
+  background:var(--s1);
+  border-left:1px solid var(--border2);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+
+.sb-header{
+  padding:14px 18px 12px;
+  border-bottom:1px solid var(--border);
+  background:var(--s2);flex-shrink:0;
+}
+.sb-title{
+  font-family:'Space Mono',monospace;font-size:10px;
+  color:var(--a1);letter-spacing:.12em;text-transform:uppercase;
+  margin-bottom:2px;
+}
+.sb-sub{font-size:11px;color:var(--mu)}
+
+/* TABS */
+.tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--s2)}
+.tab{
+  flex:1;padding:10px 6px;font-size:10px;text-align:center;cursor:pointer;
+  color:var(--mu);border-bottom:2px solid transparent;transition:.2s;
+  font-family:'Space Mono',monospace;letter-spacing:.06em;text-transform:uppercase;
+}
+.tab.on{color:var(--a1);border-bottom-color:var(--a1);background:rgba(0,255,180,.03)}
+.tab:hover:not(.on){color:var(--tx)}
+
+/* PANELS */
+.panel{display:none;flex:1;flex-direction:column;overflow:hidden}
+.panel.on{display:flex}
+
+/* ═══ AI ANALYSIS PANEL ═══ */
+#ai-panel{overflow-y:auto;padding:0}
+#ai-panel::-webkit-scrollbar{width:2px}
+#ai-panel::-webkit-scrollbar-thumb{background:var(--border2)}
+
+.ai-status-bar{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 16px;
+  background:rgba(0,255,180,.04);
+  border-bottom:1px solid var(--border);
+  font-size:10px;font-family:'Space Mono',monospace;
+}
+.ai-status-dot{width:7px;height:7px;border-radius:50%}
+.ai-status-txt{color:var(--mu);flex:1}
+.ai-btn{
+  background:none;border:1px solid var(--border2);border-radius:3px;
+  color:var(--a1);font-size:9px;padding:3px 8px;cursor:pointer;
+  font-family:'Space Mono',monospace;letter-spacing:.05em;transition:.2s;
+}
+.ai-btn:hover{background:rgba(0,255,180,.1)}
+.ai-btn:disabled{color:var(--mu);border-color:var(--border);cursor:not-allowed}
+
+/* CITY OVERVIEW */
+.overview-block{
+  margin:12px 14px;
+  background:var(--s2);border:1px solid var(--border);border-radius:6px;
+  overflow:hidden;
+}
+.overview-title{
+  font-family:'Space Mono',monospace;font-size:8px;
+  color:var(--mu);letter-spacing:.12em;text-transform:uppercase;
+  padding:8px 12px 6px;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.ov-badge{
+  font-size:8px;padding:2px 7px;border-radius:20px;
+  background:rgba(0,255,180,.1);color:var(--a1);
+}
+
+.district-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
+.district-cell{
+  background:var(--s2);padding:8px 10px;cursor:pointer;transition:.15s;
+}
+.district-cell:hover{background:var(--s3)}
+.dc-name{font-size:10px;color:var(--tx);margin-bottom:2px}
+.dc-aqi{font-family:'Space Mono',monospace;font-size:18px;font-weight:700;line-height:1}
+.dc-status{font-size:8.5px;color:var(--mu);margin-top:2px}
+.dc-trend{font-size:8px;margin-top:3px}
+.dc-trend.up{color:var(--bad)}
+.dc-trend.down{color:var(--good)}
+.dc-trend.flat{color:var(--mu)}
+
+/* ANOMALY ALERT */
+.anomaly-alert{
+  margin:0 14px 12px;
+  background:rgba(255,107,53,.07);
+  border:1px solid rgba(255,107,53,.3);
+  border-left:3px solid var(--a3);
+  border-radius:0 6px 6px 0;
+  padding:10px 12px;
+  animation:fade-in .4s ease;
+}
+@keyframes fade-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.alert-header{
+  display:flex;align-items:center;gap:7px;
+  margin-bottom:7px;
+}
+.alert-icon{font-size:14px}
+.alert-title{font-size:11px;font-weight:600;color:var(--a3)}
+.alert-severity{
+  font-family:'Space Mono',monospace;font-size:8px;
+  padding:1px 7px;border-radius:3px;background:rgba(255,107,53,.2);color:var(--a3);
+  margin-left:auto;
+}
+.alert-body{font-size:11px;color:var(--tx);line-height:1.55;margin-bottom:8px}
+.alert-actions{display:flex;gap:6px;flex-wrap:wrap}
+.alert-action{
+  font-size:9.5px;padding:3px 10px;border-radius:3px;
+  background:rgba(255,107,53,.1);color:var(--a3);
+  border:1px solid rgba(255,107,53,.25);cursor:pointer;transition:.15s;
+}
+.alert-action:hover{background:rgba(255,107,53,.2)}
+
+/* AI RESPONSE BLOCK */
+.ai-response-block{
+  margin:0 14px 12px;
+  background:var(--s2);
+  border:1px solid var(--border2);
+  border-radius:6px;overflow:hidden;
+}
+.arb-header{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 12px;border-bottom:1px solid var(--border);
+  background:rgba(0,255,180,.04);
+}
+.arb-icon{
+  width:26px;height:26px;border-radius:5px;
+  background:linear-gradient(135deg,rgba(0,255,180,.2),rgba(0,212,255,.15));
+  border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;
+}
+.arb-title{font-family:'Space Mono',monospace;font-size:9px;color:var(--a1);letter-spacing:.08em}
+.arb-time{font-size:8.5px;color:var(--mu);margin-left:auto}
+.arb-body{padding:10px 12px;font-size:11.5px;line-height:1.6;color:var(--tx)}
+.arb-body b{color:var(--a1)}
+.arb-body .section-label{
+  font-family:'Space Mono',monospace;font-size:8px;
+  color:var(--mu);letter-spacing:.1em;text-transform:uppercase;
+  margin-top:10px;margin-bottom:4px;display:block;
+}
+.three-questions{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.q-block{
+  background:var(--s3);border:1px solid var(--border);
+  border-radius:4px;padding:8px 10px;
+}
+.q-label{
+  font-family:'Space Mono',monospace;font-size:8px;
+  color:var(--mu);letter-spacing:.1em;text-transform:uppercase;
+  margin-bottom:4px;display:flex;align-items:center;gap:5px;
+}
+.q-num{
+  width:14px;height:14px;border-radius:50%;
+  background:rgba(0,255,180,.15);border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:8px;color:var(--a1);
+}
+.q-text{font-size:11px;color:var(--tx);line-height:1.5}
+.q-text b{color:var(--a2)}
+
+/* LOADING STATES */
+.thinking{
+  display:flex;align-items:center;gap:10px;
+  padding:14px 12px;
+  font-family:'Space Mono',monospace;font-size:10px;color:var(--mu);
+}
+.think-dots{display:flex;gap:4px}
+.think-d{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--a1);animation:think .9s ease-in-out infinite;
+}
+.think-d:nth-child(2){animation-delay:.15s}
+.think-d:nth-child(3){animation-delay:.3s}
+@keyframes think{0%,80%,100%{transform:scale(.6);opacity:.3}40%{transform:scale(1);opacity:1}}
+
+/* ═══ CHAT PANEL ═══ */
+#chat-panel{overflow:hidden}
+#msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
+#msgs::-webkit-scrollbar{width:2px}
+#msgs::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.msg.u{align-self:flex-end;max-width:85%}
+.msg.b{align-self:flex-start;max-width:90%}
+.bbl{padding:9px 12px;font-size:12px;line-height:1.55;border-radius:6px}
+.msg.u .bbl{
+  background:rgba(0,255,180,.08);
+  border:1px solid rgba(0,255,180,.2);
+  border-radius:6px 6px 2px 6px;
+}
+.msg.b .bbl{
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:2px 6px 6px 6px;
+}
+.mt{font-size:8.5px;color:var(--mu);margin-top:3px;padding:0 3px;font-family:'Space Mono',monospace}
+.msg.u .mt{text-align:right}
+.llm-status{font-size:9px;color:var(--mu);padding:2px 14px 5px;text-align:center;min-height:16px;font-family:'Space Mono',monospace}
+
+/* QUICK PILLS */
+.quick-pills{
+  display:flex;flex-wrap:wrap;gap:5px;
+  padding:8px 14px;border-bottom:1px solid var(--border);
+  border-top:1px solid var(--border);flex-shrink:0;
+  background:var(--s2);
+}
+.qp{
+  background:rgba(0,255,180,.06);border:1px solid var(--border2);
+  border-radius:3px;padding:3px 9px;font-size:10px;color:var(--mu);
+  cursor:pointer;transition:.15s;
+  font-family:'Space Mono',monospace;letter-spacing:.04em;
+}
+.qp:hover{border-color:var(--a1);color:var(--a1);background:rgba(0,255,180,.1)}
+
+.inp-area{padding:10px 12px;border-top:1px solid var(--border);background:var(--s1);flex-shrink:0}
+.inp-row{display:flex;gap:7px;align-items:flex-end}
+#inp{
+  flex:1;background:var(--s2);border:1px solid var(--border2);
+  border-radius:4px;padding:8px 11px;font-size:12px;color:var(--tx);
+  resize:none;min-height:36px;max-height:90px;outline:none;
+  transition:border-color .2s;font-family:'IBM Plex Sans',sans-serif;line-height:1.4;
+}
+#inp:focus{border-color:var(--a1)}
+#inp::placeholder{color:var(--mu)}
+#sbtn{
+  width:36px;height:36px;border-radius:4px;
+  background:var(--a1);border:none;color:#060a12;
+  font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:.2s;font-weight:700;
+}
+#sbtn:hover{background:#33ffc5;transform:scale(1.05)}
+#sbtn:disabled{background:var(--s2);color:var(--mu);cursor:not-allowed;transform:none}
+
+/* ═══ STATS PANEL ═══ */
+#stats-panel{overflow-y:auto;padding:12px 14px}
+#stats-panel::-webkit-scrollbar{width:2px}
+#stats-panel::-webkit-scrollbar-thumb{background:var(--border2)}
+.stat-section{margin-bottom:14px}
+.stat-section-title{
+  font-family:'Space Mono',monospace;font-size:8px;
+  color:var(--mu);letter-spacing:.12em;text-transform:uppercase;
+  margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border);
+}
+.bar-chart{display:flex;flex-direction:column;gap:5px}
+.bar-row{display:flex;align-items:center;gap:8px}
+.bar-label{font-size:10px;color:var(--tx);width:70px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-track{flex:1;height:6px;background:var(--s3);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width 1s ease}
+.bar-val{font-family:'Space Mono',monospace;font-size:10px;color:var(--mu);width:30px;text-align:right;flex-shrink:0}
+
+.pollutant-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.poll-card{
+  background:var(--s2);border:1px solid var(--border);
+  border-radius:5px;padding:9px 10px;
+}
+.poll-name{font-size:9px;color:var(--mu);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;font-family:'Space Mono',monospace}
+.poll-val{font-family:'Space Mono',monospace;font-size:20px;font-weight:700}
+.poll-unit{font-size:9px;color:var(--mu)}
+.poll-bar{height:3px;border-radius:2px;margin-top:5px;transition:width 1s ease}
+
+/* SCROLLBARS */
+::-webkit-scrollbar{width:2px}
+::-webkit-scrollbar-thumb{background:rgba(0,255,180,.2);border-radius:2px}
+
+/* MOBILE */
+@media(max-width:768px){
+  #sidebar{width:100%;position:absolute;bottom:0;left:0;height:55vh;border-left:none;border-top:1px solid var(--border2);z-index:500}
+  #map-wrap{height:45vh}
+  #main{flex-direction:column}
+  #st-panel{display:none}
+  .top-metrics{display:none}
+}
+
+/* TOOLTIP OVERRIDE */
+.leaflet-popup-content-wrapper{background:rgba(6,10,18,.95);border:1px solid var(--border2);border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,.6);backdrop-filter:blur(12px)}
+.leaflet-popup-content{color:var(--tx);font-family:'IBM Plex Sans',sans-serif;margin:10px 14px}
+.leaflet-popup-tip{background:rgba(6,10,18,.95)}
+.leaflet-popup-close-button{color:var(--mu) !important}
+
+.spin{display:inline-block;width:10px;height:10px;border:1.5px solid rgba(0,255,180,.2);border-top-color:var(--a1);border-radius:50%;animation:sp .8s linear infinite;vertical-align:middle;margin-right:4px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- TOP BAR -->
+<div id="top">
+  <div class="logo">
+    <div>
+      <div class="logo-badge">SMART CITY ECO-CONTROL</div>
+      <div class="logo-sub">Алматы · Предиктивный мониторинг</div>
+    </div>
+    <div class="logo-divider"></div>
+    <span style="font-size:10px;color:var(--mu);font-family:'Space Mono',monospace;letter-spacing:.06em">v2.0 AI</span>
+  </div>
+
+  <div class="top-metrics">
+    <div class="metric-chip" onclick="focusBestStation()">
+      <div class="pulse" id="pulse-dot" style="background:var(--mod);color:var(--mod)"></div>
+      <div>
+        <div class="metric-val" id="city-aqi" style="color:var(--mod)">—</div>
+        <div class="metric-lbl">Макс AQI</div>
+      </div>
+    </div>
+    <div class="metric-chip">
+      <div>
+        <div class="metric-val" id="anomaly-count" style="color:var(--a3)">—</div>
+        <div class="metric-lbl">Аномалий</div>
+      </div>
+    </div>
+    <div class="metric-chip">
+      <div>
+        <div class="metric-val" id="stations-ok" style="color:var(--good)">—</div>
+        <div class="metric-lbl">Станций онлайн</div>
+      </div>
+    </div>
+    <div class="metric-chip">
+      <div>
+        <div class="metric-val" id="city-avg" style="color:var(--a2)">—</div>
+        <div class="metric-lbl">Средний AQI</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="top-r">
+    <div class="live-badge"><div class="live-dot"></div>LIVE DATA</div>
+    <button class="refresh-btn" onclick="loadStations()">↻ ОБНОВИТЬ</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- MAP -->
+  <div id="map-wrap">
+    <div id="map"></div>
+
+    <!-- LEGEND -->
+    <div class="map-panel legend">
+      <div class="leg-title">Индекс AQI</div>
+      <div class="leg-row"><div class="leg-bar" style="background:#00e676"></div><div><div class="leg-info">Хороший</div><div class="leg-range">0–50</div></div></div>
+      <div class="leg-row"><div class="leg-bar" style="background:#ffeb3b"></div><div><div class="leg-info">Умеренный</div><div class="leg-range">51–100</div></div></div>
+      <div class="leg-row"><div class="leg-bar" style="background:#ff7043"></div><div><div class="leg-info">Нездоровый</div><div class="leg-range">101–150</div></div></div>
+      <div class="leg-row"><div class="leg-bar" style="background:#f44336"></div><div><div class="leg-info">Очень вредный</div><div class="leg-range">151–200</div></div></div>
+      <div class="leg-row"><div class="leg-bar" style="background:#9c27b0"></div><div><div class="leg-info">Опасный</div><div class="leg-range">200+</div></div></div>
+    </div>
+
+    <!-- STATIONS PANEL -->
+    <div class="map-panel" id="st-panel">
+      <div class="st-head">
+        <span>Станции мониторинга</span>
+        <span class="st-count" id="st-cnt"><span class="spin"></span></span>
+      </div>
+      <div id="st-list"><div style="font-size:10px;color:var(--mu);padding:6px 4px"><span class="spin"></span> Загрузка...</div></div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR: AI COMMAND CENTER -->
+  <div id="sidebar">
+    <div class="sb-header">
+      <div class="sb-title">⬡ AI COMMAND CENTER</div>
+      <div class="sb-sub">Предиктивный экологический менеджмент</div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab on" onclick="setTab('ai')">⬡ AI Анализ</div>
+      <div class="tab" onclick="setTab('chat')">◈ Чат</div>
+      <div class="tab" onclick="setTab('stats')">◻ Статистика</div>
+    </div>
+
+    <!-- AI ANALYSIS PANEL -->
+    <div class="panel on" id="ai-panel-wrap">
+      <div id="ai-panel" style="overflow-y:auto;flex:1">
+        <div class="ai-status-bar">
+          <div class="ai-status-dot" id="ai-dot" style="background:var(--mu)"></div>
+          <div class="ai-status-txt" id="ai-status-txt">Ожидание данных с датчиков...</div>
+          <button class="ai-btn" id="analyze-btn" onclick="runAIAnalysis()" disabled>АНАЛИЗ</button>
+        </div>
+
+        <!-- Overview будет здесь -->
+        <div id="overview-container"></div>
+
+        <!-- Аномалии будут здесь -->
+        <div id="alerts-container"></div>
+
+        <!-- AI ответ будет здесь -->
+        <div id="ai-response-container"></div>
+
+        <!-- Placeholder -->
+        <div id="ai-placeholder" style="padding:30px 20px;text-align:center">
+          <div style="font-size:32px;margin-bottom:12px;opacity:.4">⬡</div>
+          <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--mu);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">Система запускается</div>
+          <div style="font-size:11px;color:var(--mu);line-height:1.6">Загружаю данные со станций мониторинга.<br>AI-анализ запустится автоматически.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAT PANEL -->
+    <div class="panel" id="chat-panel">
+      <div id="msgs">
+        <div class="msg b">
+          <div class="bbl">Привет! Я Smart City AI для Алматы 🌿<br><br>Задай вопрос об экологии или нажми кнопку <b>⬡ AI Анализ</b> — я проанализирую текущую ситуацию.</div>
+          <div class="mt">SMART ECO AI</div>
+        </div>
+      </div>
+      <div class="llm-status" id="llm-st"></div>
+      <div class="quick-pills">
+        <div class="qp" onclick="ask('Как смог влияет на здоровье детей?')">😷 Смог</div>
+        <div class="qp" onclick="ask('Куда сдать раздельный мусор?')">♻️ Мусор</div>
+        <div class="qp" onclick="ask('Качество воды Алматы')">💧 Вода</div>
+        <div class="qp" onclick="ask('Лучшие районы для прогулок сегодня')">🌳 Прогулки</div>
+        <div class="qp" onclick="ask('Экологичный транспорт')">🚌 Транспорт</div>
+      </div>
+      <div class="inp-area">
+        <div class="inp-row">
+          <textarea id="inp" placeholder="Спроси об экологии Алматы..." rows="1" onkeydown="onKey(event)" oninput="rsz(this)"></textarea>
+          <button id="sbtn" onclick="send()">▶</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATS PANEL -->
+    <div class="panel" id="stats-panel">
+      <div class="stat-section">
+        <div class="stat-section-title">Рейтинг районов по AQI</div>
+        <div class="bar-chart" id="district-bars">
+          <div style="font-size:10px;color:var(--mu)"><span class="spin"></span> Загрузка...</div>
+        </div>
+      </div>
+      <div class="stat-section">
+        <div class="stat-section-title">Параметры загрязнения (типовые)</div>
+        <div class="pollutant-grid">
+          <div class="poll-card">
+            <div class="poll-name">PM2.5</div>
+            <div class="poll-val" id="pm25-val" style="color:var(--bad)">—</div>
+            <div class="poll-unit">μg/m³</div>
+            <div class="poll-bar" id="pm25-bar" style="background:var(--bad);width:0%"></div>
+          </div>
+          <div class="poll-card">
+            <div class="poll-name">PM10</div>
+            <div class="poll-val" id="pm10-val" style="color:var(--mod)">—</div>
+            <div class="poll-unit">μg/m³</div>
+            <div class="poll-bar" id="pm10-bar" style="background:var(--mod);width:0%"></div>
+          </div>
+          <div class="poll-card">
+            <div class="poll-name">NO₂</div>
+            <div class="poll-val" id="no2-val" style="color:var(--good)">—</div>
+            <div class="poll-unit">μg/m³</div>
+            <div class="poll-bar" id="no2-bar" style="background:var(--good);width:0%"></div>
+          </div>
+          <div class="poll-card">
+            <div class="poll-name">CO</div>
+            <div class="poll-val" id="co-val" style="color:var(--mod)">—</div>
+            <div class="poll-unit">mg/m³</div>
+            <div class="poll-bar" id="co-bar" style="background:var(--mod);width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="stat-section">
+        <div class="stat-section-title">Информация</div>
+        <div style="font-size:10.5px;color:var(--mu);line-height:1.7">
+          Данные: <span style="color:var(--tx)">WAQI · Казгидромет</span><br>
+          Обновление: <span style="color:var(--tx)">каждые 5 мин</span><br>
+          AI-движок: <span style="color:var(--a1)">Claude claude-sonnet-4-20250514</span><br>
+          Анализ аномалий: <span style="color:var(--tx)">порог ΔLtAQI +30%</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════
+const WAQI_TOKEN = 'demo';
+const GROQ_KEY = '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';
+
+// Historical baselines (норма по данным Казгидромет)
+const BASELINES = {
+  'Алмалинский':  85,
+  'Медеуский':    70,
+  'Бостандык':    75,
+  'Ауэзовский':   95,
+  'Жетысуский':  100,
+  'Турксибский':  90,
+  'Алатауский':   70,
+  'Наурызбайский':75,
+  'Горная зона':  35,
+  'Город':        80,
+};
+
+const STATIONS = [
+  {q:'@A74197',   name:'Pushkin St',      dist:'Медеуский',    lat:43.2450, lng:76.9550},
+  {q:'@H12774',   name:'Посольство США',  dist:'Медеуский',    lat:43.2380, lng:76.9500},
+  {q:'kazakhstan/almaty/medeu', name:'Медеу', dist:'Горная зона', lat:43.1490, lng:77.0040},
+  {q:'@A114535',  name:'KazGU2',          dist:'Бостандык',    lat:43.2210, lng:76.8760},
+  {q:'kazakhstan/almaty/bostandyk', name:'Бостандык', dist:'Бостандык', lat:43.2550, lng:76.8900},
+  {q:'kazakhstan/almaty/kazgu2', name:'КазГУ', dist:'Бостандык', lat:43.2220, lng:76.8780},
+  {q:'@A414163',  name:'Ауэзовский',      dist:'Ауэзовский',   lat:43.2050, lng:76.8450},
+  {q:'kazakhstan/almaty/auezov', name:'Ауэзов', dist:'Ауэзовский', lat:43.2000, lng:76.8500},
+  {q:'kazakhstan/almaty/alatau', name:'Алатауский', dist:'Алатауский', lat:43.1890, lng:76.8100},
+  {q:'kazakhstan/almaty/zhetysu', name:'Жетысу', dist:'Жетысуский', lat:43.3100, lng:77.0200},
+  {q:'kazakhstan/almaty/ainabulak', name:'Айнабулак', dist:'Жетысуский', lat:43.3250, lng:76.9800},
+  {q:'kazakhstan/almaty/turksib', name:'Турксиб', dist:'Турксибский', lat:43.3550, lng:77.0500},
+  {q:'kazakhstan/almaty/nauryzbai', name:'Наурызбай', dist:'Наурызбайский', lat:43.2200, lng:76.7700},
+  {q:'kazakhstan/almaty/almaly', name:'Алмалы', dist:'Алмалинский', lat:43.2650, lng:76.9350},
+  {q:'kazakhstan/almaty/seifullin', name:'Сейфуллина', dist:'Алмалинский', lat:43.2600, lng:76.9150},
+  {q:'almaty', name:'Алматы', dist:'Город', lat:43.2551, lng:76.9126},
+  {q:'kazakhstan/almaty/us-embassy', name:'US Embassy', dist:'Медеуский', lat:43.2380, lng:76.9500},
+  {q:'kazakhstan/almaty/dostyk', name:'Достык', dist:'Медеуский', lat:43.2360, lng:76.9430},
+];
+
+const LAT_MIN=42.9,LAT_MAX=43.6,LNG_MIN=76.5,LNG_MAX=77.4;
+function inAlmaty(lat,lng){return lat>LAT_MIN&&lat<LAT_MAX&&lng>LNG_MIN&&lng<LNG_MAX;}
+
+// ══════════════════════════════════════════════
+// MAP INIT
+// ══════════════════════════════════════════════
+const map = L.map('map',{zoomControl:false}).setView([43.238,76.945],12);
+L.control.zoom({position:'bottomright'}).addTo(map);
+const tileDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,attribution:'©CARTO'});
+tileDark.addTo(map);
+
+function aC(v){v=+v;if(v<=50)return'#00e676';if(v<=100)return'#ffeb3b';if(v<=150)return'#ff7043';if(v<=200)return'#f44336';return'#9c27b0';}
+function aT(v){v=+v;if(v<=50)return'Хороший';if(v<=100)return'Умеренный';if(v<=150)return'Нездоровый';if(v<=200)return'Очень вредный';return'Опасный';}
+
+function mkIcon(aqi, isAnomaly=false){
+  const c=aC(aqi);
+  const glow = isAnomaly ? `<circle cx="23" cy="23" r="21" fill="none" stroke="${c}" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"><animateTransform attributeName="transform" type="rotate" from="0 23 23" to="360 23 23" dur="4s" repeatCount="indefinite"/></circle>` : '';
+  return L.divIcon({
+    html:`<svg xmlns="http://www.w3.org/2000/svg" width="46" height="54">
+      ${glow}
+      <circle cx="23" cy="23" r="19" fill="${c}" fill-opacity="0.15" stroke="${c}" stroke-width="1.5"/>
+      <circle cx="23" cy="23" r="13" fill="${c}" fill-opacity="0.9"/>
+      <text x="23" y="27" text-anchor="middle" fill="#060a12" font-size="${aqi>=100?9:11}" font-weight="700" font-family="Space Mono,monospace">${aqi}</text>
+      <line x1="23" y1="36" x2="23" y2="49" stroke="${c}" stroke-width="1.5"/>
+      <circle cx="23" cy="51" r="2" fill="${c}"/>
+    </svg>`,
+    className:'',iconSize:[46,54],iconAnchor:[23,51]
+  });
+}
+
+function tFetch(url,opts,ms=9000){
+  const c=new AbortController();
+  const t=setTimeout(()=>c.abort(),ms);
+  return fetch(url,{...opts,signal:c.signal}).finally(()=>clearTimeout(t));
+}
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let allMarkers=[];
+let currentData=[];
+let analysisRunning=false;
+let chatHistory=[{role:'system',content:'Ты Smart City Eco AI — экологический ассистент системы мониторинга Алматы. Отвечай ТОЛЬКО на экологические темы. Давай конкретные советы для Алматы. Отвечай на русском, кратко, с эмодзи.'}];
+let chatBusy=false;
+
+// ══════════════════════════════════════════════
+// LOAD STATIONS
+// ══════════════════════════════════════════════
+async function loadStations(){
+  document.getElementById('st-list').innerHTML='<div style="font-size:10px;color:var(--mu);padding:4px"><span class="spin"></span> Загрузка...</div>';
+  document.getElementById('st-cnt').innerHTML='<span class="spin"></span>';
+  allMarkers.forEach(m=>map.removeLayer(m));
+  allMarkers=[];
+
+  const raw = await Promise.all(STATIONS.map(async s=>{
+    try{
+      const r=await tFetch(`https://api.waqi.info/feed/${s.q}/?token=${WAQI_TOKEN}`,{},7000);
+      if(!r.ok)return null;
+      const d=await r.json();
+      if(d.status!=='ok')return null;
+      const aqi=d.data?.aqi;
+      if(!aqi||aqi==='-'||isNaN(+aqi)||+aqi<=0)return null;
+      const geo=d.data?.city?.geo;
+      const lat=(geo&&geo[0]&&inAlmaty(+geo[0],geo[1]))?+geo[0]:s.lat;
+      const lng=(geo&&geo[1]&&inAlmaty(geo[0],+geo[1]))?+geo[1]:s.lng;
+      if(!inAlmaty(lat,lng))return null;
+      return {name:s.name,dist:s.dist,aqi:+aqi,lat,lng};
+    }catch(e){return null;}
+  }));
+
+  // Deduplicate
+  const seen=[];const results=[];
+  for(const s of raw){
+    if(!s)continue;
+    const dup=seen.find(p=>Math.abs(p.lat-s.lat)<0.01&&Math.abs(p.lng-s.lng)<0.01);
+    if(dup){if(s.aqi>dup.aqi)Object.assign(dup,s);continue;}
+    seen.push(s);results.push(s);
+  }
+  results.sort((a,b)=>b.aqi-a.aqi);
+
+  if(results.length===0){
+    showFallbackData();
+    return;
+  }
+
+  currentData=results;
+  renderStations(results);
+  updateTopBar(results);
+  updateStats(results);
+
+  document.getElementById('analyze-btn').disabled=false;
+  document.getElementById('ai-status-txt').textContent=`Загружено ${results.length} станций · Готов к анализу`;
+  document.getElementById('ai-dot').style.background='var(--a1)';
+
+  // Auto-run analysis
+  setTimeout(()=>runAIAnalysis(),500);
+}
+
+function renderStations(results){
+  const list=document.getElementById('st-list');
+  list.innerHTML='';
+  document.getElementById('st-cnt').textContent=`${results.length} ст.`;
+
+  results.forEach(s=>{
+    const baseline=BASELINES[s.dist]||80;
+    const isAnomaly=s.aqi>baseline*1.3&&s.aqi>100;
+    const c=aC(s.aqi);
+    const m=L.marker([s.lat,s.lng],{icon:mkIcon(s.aqi,isAnomaly)}).addTo(map);
+    m.bindPopup(`<b style="font-size:13px;font-family:'Space Mono',monospace">${s.name}</b><br><span style="font-size:10px;color:#5a8070">${s.dist}</span><br>AQI: <b style="color:${c}">${s.aqi}</b> — ${aT(s.aqi)}${isAnomaly?'<br><span style="color:#ff6b35;font-size:10px">⚠ Аномалия: выше нормы на '+Math.round((s.aqi/baseline-1)*100)+'%</span>':''}<br><small style="color:#5a8070">WAQI · Казгидромет</small>`);
+    allMarkers.push(m);
+
+    const row=document.createElement('div');
+    row.className='st-row'+(isAnomaly?' anomaly':'');
+    row.onclick=()=>{map.setView([s.lat,s.lng],14);m.openPopup();};
+    row.innerHTML=`
+      <div style="flex:1;min-width:0">
+        <div class="st-name">${s.name}${isAnomaly?' <span class="anomaly-flag">⚠</span>':''}</div>
+        <div class="st-dist">${s.dist}</div>
+      </div>
+      <div class="st-aqi" style="background:${c}18;color:${c}">${s.aqi}</div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function updateTopBar(results){
+  const maxAqi=Math.max(...results.map(s=>s.aqi));
+  const avgAqi=Math.round(results.reduce((a,b)=>a+b.aqi,0)/results.length);
+  const anomalies=results.filter(s=>{
+    const b=BASELINES[s.dist]||80;
+    return s.aqi>b*1.3&&s.aqi>100;
+  }).length;
+
+  document.getElementById('city-aqi').textContent=maxAqi;
+  document.getElementById('city-aqi').style.color=aC(maxAqi);
+  document.getElementById('city-avg').textContent=avgAqi;
+  document.getElementById('anomaly-count').textContent=anomalies;
+  document.getElementById('stations-ok').textContent=results.length;
+  document.getElementById('pulse-dot').style.background=aC(maxAqi);
+  document.getElementById('pulse-dot').style.color=aC(maxAqi);
+}
+
+function updateStats(results){
+  // District bars
+  const byDist={};
+  results.forEach(s=>{
+    if(!byDist[s.dist]||s.aqi>byDist[s.dist])byDist[s.dist]=s.aqi;
+  });
+  const sorted=Object.entries(byDist).sort((a,b)=>b[1]-a[1]);
+  const maxVal=sorted[0]?.[1]||200;
+  const barsEl=document.getElementById('district-bars');
+  barsEl.innerHTML=sorted.map(([d,v])=>`
+    <div class="bar-row">
+      <div class="bar-label">${d}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${Math.min(100,(v/maxVal*100).toFixed(1))}%;background:${aC(v)}"></div>
+      </div>
+      <div class="bar-val" style="color:${aC(v)}">${v}</div>
+    </div>
+  `).join('');
+
+  // Estimate pollutants from AQI (simplified conversion)
+  const avgAqi=results.reduce((a,b)=>a+b.aqi,0)/results.length;
+  const pm25=Math.round(avgAqi*0.55);
+  const pm10=Math.round(avgAqi*0.85);
+  const no2=Math.round(avgAqi*0.25);
+  const co=(avgAqi*0.012).toFixed(1);
+
+  document.getElementById('pm25-val').textContent=pm25;
+  document.getElementById('pm10-val').textContent=pm10;
+  document.getElementById('no2-val').textContent=no2;
+  document.getElementById('co-val').textContent=co;
+  document.getElementById('pm25-bar').style.width=Math.min(100,pm25/75*100)+'%';
+  document.getElementById('pm10-bar').style.width=Math.min(100,pm10/150*100)+'%';
+  document.getElementById('no2-bar').style.width=Math.min(100,no2/40*100)+'%';
+  document.getElementById('co-bar').style.width=Math.min(100,co/10*100)+'%';
+}
+
+function focusBestStation(){
+  if(currentData.length>0){
+    const worst=currentData[0];
+    const m=allMarkers[0];
+    map.setView([worst.lat,worst.lng],14);
+    if(m)m.openPopup();
+  }
+}
+
+// ══════════════════════════════════════════════
+// FALLBACK DATA
+// ══════════════════════════════════════════════
+function showFallbackData(){
+  const fb=[
+    {name:'Центр',dist:'Алмалинский',aqi:95,lat:43.260,lng:76.935},
+    {name:'Достык',dist:'Медеуский',aqi:88,lat:43.236,lng:76.943},
+    {name:'Бостандык',dist:'Бостандык',aqi:82,lat:43.225,lng:76.877},
+    {name:'Ауэзов',dist:'Ауэзовский',aqi:112,lat:43.200,lng:76.845},
+    {name:'Жетысу',dist:'Жетысуский',aqi:130,lat:43.310,lng:77.020},
+    {name:'Турксиб',dist:'Турксибский',aqi:98,lat:43.355,lng:77.050},
+    {name:'Алатауский',dist:'Алатауский',aqi:75,lat:43.189,lng:76.810},
+    {name:'Наурызбай',dist:'Наурызбайский',aqi:80,lat:43.220,lng:76.770},
+    {name:'Медеу',dist:'Горная зона',aqi:42,lat:43.149,lng:77.004},
+  ];
+  currentData=fb;
+  renderStations(fb);
+  updateTopBar(fb);
+  updateStats(fb);
+  document.getElementById('st-cnt').textContent='кэш';
+  document.getElementById('analyze-btn').disabled=false;
+  document.getElementById('ai-status-txt').textContent='Кэш-данные · API недоступен';
+  document.getElementById('ai-dot').style.background='var(--bad)';
+  setTimeout(()=>runAIAnalysis(),500);
+}
+
+// ══════════════════════════════════════════════
+// AI ANALYSIS
+// ══════════════════════════════════════════════
+async function runAIAnalysis(){
+  if(analysisRunning||currentData.length===0)return;
+  analysisRunning=true;
+
+  const btn=document.getElementById('analyze-btn');
+  btn.disabled=true;btn.textContent='...';
+
+  document.getElementById('ai-dot').style.background='var(--a2)';
+  document.getElementById('ai-status-txt').textContent='AI анализирует данные...';
+  document.getElementById('ai-placeholder').style.display='none';
+
+  // Detect anomalies
+  const anomalies=currentData.filter(s=>{
+    const b=BASELINES[s.dist]||80;
+    return s.aqi>(b*1.3)&&s.aqi>100;
+  });
+
+  // Build overview
+  renderOverview(currentData, anomalies);
+
+  // Show anomaly alerts
+  renderAnomalyAlerts(anomalies);
+
+  // Build AI prompt
+  const maxStation=currentData[0];
+  const minStation=currentData[currentData.length-1];
+  const avgAqi=Math.round(currentData.reduce((a,b)=>a+b.aqi,0)/currentData.length);
+
+  const dataStr=currentData.map(s=>{
+    const b=BASELINES[s.dist]||80;
+    const delta=Math.round((s.aqi/b-1)*100);
+    return `${s.name}(${s.dist}): AQI=${s.aqi} [норма=${b}, откл.${delta>0?'+':''}${delta}%]`;
+  }).join(', ');
+
+  const prompt=`Ты система предиктивного экологического менеджмента Smart City Eco-Control Алматы.
+
+ТЕКУЩИЕ ДАННЫЕ ДАТЧИКОВ (${new Date().toLocaleTimeString('ru')}):
+${dataStr}
+
+Сводка: макс.AQI=${maxStation.aqi}(${maxStation.name}), мин.=${minStation.aqi}(${minStation.name}), средний=${avgAqi}
+Аномалий (выше нормы на 30%+): ${anomalies.length} районов${anomalies.length>0?' ('+anomalies.map(a=>a.name).join(', ')+')':''}
+
+Ответь на три управленческих вопроса (кратко, конкретно, по-русски):
+
+**1. ЧТО ПРОИСХОДИТ?**
+Опиши текущую экологическую ситуацию в городе. Укажи самые проблемные и чистые районы. Если есть аномалии — назови вероятные причины (время суток, метеоусловия котловины Алматы, пробки, ТЭЦ).
+
+**2. НАСКОЛЬКО КРИТИЧНО?**
+Дай оценку уровня угрозы для здоровья жителей. Кто в группе риска? Насколько срочно нужны меры?
+
+**3. ЧТО ПРЕДПРИНЯТЬ?**
+Дай конкретные рекомендации для:
+- Городских служб (транспорт, ТЭЦ, промпредприятия)
+- Жителей (маски, окна, прогулки, дети/пожилые)
+- Приоритетные районы для вмешательства
+
+Отвечай структурированно, каждый пункт с заголовком.`;
+
+  // Show thinking state
+  const aiResponseEl=document.getElementById('ai-response-container');
+  aiResponseEl.innerHTML=`
+    <div class="ai-response-block">
+      <div class="arb-header">
+        <div class="arb-icon">⬡</div>
+        <div class="arb-title">SMART ECO AI · АНАЛИЗИРУЕТ...</div>
+      </div>
+      <div class="arb-body">
+        <div class="thinking">
+          <div class="think-dots">
+            <div class="think-d"></div><div class="think-d"></div><div class="think-d"></div>
+          </div>
+          Обрабатываю данные ${currentData.length} станций...
+        </div>
+      </div>
+    </div>
+  `;
+
+  try{
+    const res=await callAnthropicAPI(prompt);
+    renderAIResponse(res);
+    document.getElementById('ai-dot').style.background='var(--good)';
+    document.getElementById('ai-status-txt').textContent=`Анализ завершён · ${new Date().toLocaleTimeString('ru')}`;
+  }catch(e){
+    // Fallback to Groq
+    try{
+      const res=await callGroqAPI(prompt);
+      renderAIResponse(res);
+    }catch(e2){
+      renderAIResponse(getFallbackAnalysis(currentData,anomalies));
+    }
+    document.getElementById('ai-dot').style.background='var(--mod)';
+    document.getElementById('ai-status-txt').textContent='Анализ готов (резервный режим)';
+  }
+
+  analysisRunning=false;
+  btn.disabled=false;btn.textContent='АНАЛИЗ';
+}
+
+async function callAnthropicAPI(prompt){
+  const r=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:1000,
+      messages:[{role:'user',content:prompt}]
+    })
+  });
+  if(!r.ok)throw new Error('Anthropic API error');
+  const d=await r.json();
+  const txt=d.content?.map(b=>b.type==='text'?b.text:'').join('');
+  if(!txt)throw new Error('empty');
+  return txt.trim();
+}
+
+async function callGroqAPI(prompt){
+  const r=await tFetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${GROQ_KEY}`},
+    body:JSON.stringify({
+      model:'llama-3.3-70b-versatile',
+      messages:[{role:'user',content:prompt}],
+      max_tokens:700,temperature:0.7
+    })
+  },18000);
+  if(!r.ok)throw new Error('Groq error');
+  const d=await r.json();
+  const txt=d.choices?.[0]?.message?.content;
+  if(!txt)throw new Error('empty');
+  return txt.trim();
+}
+
+function getFallbackAnalysis(data,anomalies){
+  const maxS=data[0];
+  const avgAqi=Math.round(data.reduce((a,b)=>a+b.aqi,0)/data.length);
+  return `**1. ЧТО ПРОИСХОДИТ?**\nСредний AQI по городу ${avgAqi}. Наиболее загрязнён ${maxS.name} (${maxS.dist}): AQI ${maxS.aqi} — ${aT(maxS.aqi)}.${anomalies.length>0?' Зафиксированы аномалии в '+anomalies.length+' районах.':''} Горные районы остаются чище городских.
+
+**2. НАСКОЛЬКО КРИТИЧНО?**\n${maxS.aqi>150?'🔴 ВЫСОКИЙ РИСК':maxS.aqi>100?'🟠 УМЕРЕННЫЙ РИСК':'🟡 ПРИЕМЛЕМЫЙ УРОВЕНЬ'}. ${maxS.aqi>100?'Рекомендуется ограничить прогулки детям и пожилым людям.':'Можно гулять, но чувствительным группам лучше избегать загрязнённых районов.'}
+
+**3. ЧТО ПРЕДПРИНЯТЬ?**\n🏙 Городским службам: усиленный контроль выбросов в ${anomalies.map(a=>a.dist).join(', ')||maxS.dist}.\n😷 Жителям: маска FFP2 при AQI>100. Закрыть окна, включить очиститель воздуха.\n🌳 Чистый воздух: Медеу, Бутаковка, Шымбулак.`;
+}
+
+function renderOverview(data, anomalies){
+  const container=document.getElementById('overview-container');
+  const byDist={};
+  data.forEach(s=>{
+    if(!byDist[s.dist]||s.aqi>byDist[s.dist].aqi)byDist[s.dist]={aqi:s.aqi,name:s.name};
+  });
+  const distEntries=Object.entries(byDist).sort((a,b)=>b[1].aqi-a[1].aqi).slice(0,6);
+
+  container.innerHTML=`
+    <div class="overview-block" style="margin:12px 14px 0">
+      <div class="overview-title">
+        <span>Районы города</span>
+        <span class="ov-badge">${anomalies.length} аномалий</span>
+      </div>
+      <div class="district-grid">
+        ${distEntries.map(([dist,info])=>{
+          const b=BASELINES[dist]||80;
+          const delta=Math.round((info.aqi/b-1)*100);
+          const trend=delta>15?'up':delta<-15?'down':'flat';
+          const trendSym=trend==='up'?'↑ +'+delta+'% от нормы':trend==='down'?'↓ '+delta+'% от нормы':'→ норма';
+          return `<div class="district-cell" onclick="filterByDistrict('${dist}')">
+            <div class="dc-name">${dist}</div>
+            <div class="dc-aqi" style="color:${aC(info.aqi)}">${info.aqi}</div>
+            <div class="dc-status">${aT(info.aqi)}</div>
+            <div class="dc-trend ${trend}">${trendSym}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderAnomalyAlerts(anomalies){
+  const container=document.getElementById('alerts-container');
+  container.innerHTML='';
+  if(anomalies.length===0)return;
+
+  anomalies.slice(0,2).forEach(s=>{
+    const b=BASELINES[s.dist]||80;
+    const pct=Math.round((s.aqi/b-1)*100);
+    const severity=s.aqi>150?'КРИТИЧНО':s.aqi>120?'ВЫСОКИЙ':'ПОВЫШЕННЫЙ';
+    container.innerHTML+=`
+      <div class="anomaly-alert">
+        <div class="alert-header">
+          <div class="alert-icon">⚠</div>
+          <div class="alert-title">Аномалия: ${s.name} (${s.dist})</div>
+          <div class="alert-severity">${severity}</div>
+        </div>
+        <div class="alert-body">AQI <b style="color:${aC(s.aqi)}">${s.aqi}</b> — выше нормы на <b>${pct}%</b> (норма ~${b}). ${aT(s.aqi)}.</div>
+        <div class="alert-actions">
+          <div class="alert-action" onclick="askAboutStation('${s.name}',${s.aqi})">💬 Спросить AI</div>
+          <div class="alert-action" onclick="zoomToStation(${s.lat},${s.lng})">🗺 На карте</div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+function renderAIResponse(text){
+  const container=document.getElementById('ai-response-container');
+  const sections=text.split(/\*\*(\d\.\s+[^*]+)\*\*/g);
+
+  // Parse the 3 questions
+  const parts=text.split(/\n?\*\*\d\.\s/);
+  const q1=parts[1]?.replace(/\*\*/g,'').trim()||'';
+  const q2=parts[2]?.replace(/\*\*/g,'').trim()||'';
+  const q3=parts[3]?.replace(/\*\*/g,'').trim()||'';
+
+  container.innerHTML=`
+    <div class="ai-response-block" style="margin:12px 14px">
+      <div class="arb-header">
+        <div class="arb-icon">⬡</div>
+        <div class="arb-title">SMART ECO AI · УПРАВЛЕНЧЕСКИЙ АНАЛИЗ</div>
+        <div class="arb-time">${new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+      <div class="arb-body">
+        <div class="three-questions">
+          <div class="q-block">
+            <div class="q-label"><div class="q-num">1</div>ЧТО ПРОИСХОДИТ?</div>
+            <div class="q-text">${fmt(q1||text.split('\n').slice(0,4).join('\n'))}</div>
+          </div>
+          <div class="q-block">
+            <div class="q-label"><div class="q-num">2</div>НАСКОЛЬКО КРИТИЧНО?</div>
+            <div class="q-text">${fmt(q2||'Анализ доступен в полном тексте ниже.')}</div>
+          </div>
+          <div class="q-block">
+            <div class="q-label"><div class="q-num">3</div>ЧТО ПРЕДПРИНЯТЬ?</div>
+            <div class="q-text">${fmt(q3||'')}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function filterByDistrict(dist){
+  const stations=currentData.filter(s=>s.dist===dist);
+  if(stations.length>0){
+    map.setView([stations[0].lat,stations[0].lng],13);
+  }
+}
+
+function zoomToStation(lat,lng){
+  map.setView([lat,lng],14);
+}
+
+function askAboutStation(name, aqi){
+  setTab('chat');
+  ask(`Аномалия: на станции ${name} AQI = ${aqi}. Что это значит и что делать жителям этого района?`);
+}
+
+// ══════════════════════════════════════════════
+// CHAT (GROQ FALLBACK)
+// ══════════════════════════════════════════════
+async function callChatLLM(msgs){
+  // Try Anthropic first
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:msgs.filter(m=>m.role!=='system'),system:msgs[0]?.content})
+    });
+    if(r.ok){
+      const d=await r.json();
+      const txt=d.content?.map(b=>b.type==='text'?b.text:'').join('');
+      if(txt)return txt.trim();
+    }
+  }catch(e){}
+
+  // Fallback Groq
+  const r=await tFetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${GROQ_KEY}`},
+    body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:msgs,max_tokens:500,temperature:0.7})
+  },15000);
+  if(r.ok){const d=await r.json();return d.choices?.[0]?.message?.content?.trim();}
+  throw new Error('All LLMs failed');
+}
+
+async function send(){
+  const el=document.getElementById('inp');const txt=el.value.trim();
+  if(!txt||chatBusy)return;
+  el.value='';el.style.height='auto';
+  addMsg('u',txt);
+  chatHistory.push({role:'user',content:txt});
+  chatBusy=true;
+  document.getElementById('sbtn').disabled=true;
+  setSt('<span class="spin"></span> AI думает...');
+  const tp=addTyping();
+  try{
+    const rep=await callChatLLM(chatHistory);
+    rmEl(tp);addMsg('b',rep);
+    chatHistory.push({role:'assistant',content:rep});
+    setSt('');
+  }catch(e){
+    rmEl(tp);addMsg('b','⚠️ Ошибка подключения. Попробуй ещё раз.');
+    setSt('');
+  }
+  chatBusy=false;
+  document.getElementById('sbtn').disabled=false;
+}
+
+function ask(q){setTab('chat');document.getElementById('inp').value=q;send();}
+
+// ══════════════════════════════════════════════
+// UI UTILS
+// ══════════════════════════════════════════════
+function setTab(n){
+  const tabs=['ai','chat','stats'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',tabs[i]===n));
+  document.getElementById('ai-panel-wrap').classList.toggle('on',n==='ai');
+  document.getElementById('chat-panel').classList.toggle('on',n==='chat');
+  document.getElementById('stats-panel').classList.toggle('on',n==='stats');
+}
+
+function addMsg(r,txt){
+  const c=document.getElementById('msgs');
+  const d=document.createElement('div');
+  d.className='msg '+r;
+  d.innerHTML=`<div class="bbl">${fmt(txt)}</div><div class="mt">${r==='b'?'SMART ECO AI · ':''}${now()}</div>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;
+}
+function addTyping(){
+  const c=document.getElementById('msgs');
+  const d=document.createElement('div');d.className='msg b';
+  d.innerHTML='<div class="bbl"><div class="thinking"><div class="think-dots"><div class="think-d"></div><div class="think-d"></div><div class="think-d"></div></div></div></div>';
+  c.appendChild(d);c.scrollTop=c.scrollHeight;return d;
+}
+function rmEl(el){el?.remove();}
+function setSt(h){document.getElementById('llm-st').innerHTML=h;}
+function fmt(t){
+  return t
+    .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
+    .replace(/\*(.*?)\*/g,'<i>$1</i>')
+    .replace(/\n/g,'<br>');
+}
+function now(){return new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});}
+function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+function rsz(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,90)+'px';}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+loadStations();
+setInterval(loadStations, 5*60*1000);
+</script>
+</body>
+</html>
